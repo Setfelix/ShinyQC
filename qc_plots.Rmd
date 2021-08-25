@@ -1,0 +1,41 @@
+---
+title: "qc_plots"
+author: "Setor"
+date: "16/08/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=T}
+knitr::opts_chunk$set(echo = F)
+library(tidyverse)
+```
+
+## Load datasets
+```{r}
+ss_read_pairs_per_bc_hist <- read.delim("E:/test_dir/properties/out_dir/all_samples_ss_read_pairs_per_bc_hist.tsv", stringsAsFactors=FALSE)
+ds_read_pairs_per_bc_hist <- read.delim("E:/test_dir/properties/out_dir/all_samples_ds_read_pairs_per_bc_hist.tsv", stringsAsFactors=FALSE)
+ss_duplication_rate <- read.delim("E:/test_dir/properties/out_dir/all_samples_ss_duplication_rate.tsv", stringsAsFactors=FALSE)
+
+```
+
+## Including Plots
+### Read pairs per barcode (single strand)
+```{r, echo=FALSE}
+ss_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
+  geom_histogram(stat = "identity") + theme_bw()
+```
+
+### Read pairs per barcode (duplex strand)
+```{r}
+ds_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
+  geom_histogram(stat = "identity") + theme_bw()
+```
+
+### Duplication rate
+```{r}
+ss_duplication_rate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% mutate(sample=factor(x=sample, levels = sample)) %>% ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw()
+```
+
+

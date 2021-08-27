@@ -12,6 +12,15 @@ library(tidyverse)
 library(tools)
 library(vroom)
 
+#make plotting functions
+makehist <- function(df, x_var, y_var, title_name="", sample_name=""){
+    df %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
+        geom_histogram(stat = "identity") + theme_bw() + 
+        ggtitle(paste(sample_name, " ", title_name))
+}
+
+makeScatter <-
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
@@ -31,7 +40,8 @@ ui <- fluidPage(
                           plotOutput("ss_histplot"),
                           plotOutput("ds_histplot"),
                           plotOutput("duprate_scatter")),
-                 tabPanel("Sample"
+                 tabPanel("Sample",
+                          plotOutput("sample_ss_histplot")
                           )
              )
         )
@@ -90,13 +100,27 @@ server <- function(input, output, session) {
     output$duprate_scatter <- renderPlot({
             duprate<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
                                 stringsAsFactors = F)
-            #new_qc_file<-read.delim(qc_file1$datapath, stringsAsFactors=FALSE)
-            duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% mutate(sample=factor(x=sample, levels = sample)) %>%
+            duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% 
+                mutate(sample=factor(x=sample, levels = sample)) %>%
                 ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
                 theme(axis.text.x = element_text(angle = 45, hjust = 1))
         })
     
     #Sample tab results
+    input_sample<-reactive({
+        req(input$sample)
+    })
+    output$sample_ss_histplot<-renderPlot({
+        sample_ss_read_pairs_per_bc_hist<-read.delim(input_data()[input_data()$name=='all_samples_ss_read_pairs_per_bc_hist.tsv',
+                                                                  'datapath'], stringsAsFactors = F)
+        #filter for selected sample
+        sample_ss_read_pairs_per_bc_hist <- sample_ss_read_pairs_per_bc_hist %>% filter(.data$X.sample==.env$input_sample())
+        sample_ss_read_pairs_per_bc_hist %>%
+            ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) +
+            geom_histogram(stat = "identity") + theme_bw() +
+            ggtitle(paste("Single strand read pairs per barcode for ", input_sample()))
+    })
+    
 
     
 }

@@ -4,23 +4,27 @@
 #
 # Find out more about building applications with Shiny here:
 #
-#    http://shiny.rstudio.com/
+#http://shiny.rstudio.com/
 #
 
 library(shiny)
 library(tidyverse)
 library(tools)
 library(vroom)
+library(Cairo)
 
 #make plotting functions
-makehist <- function(df, x_var, y_var, title_name="", sample_name=""){
-    df %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
-        geom_histogram(stat = "identity") + theme_bw() + 
-        ggtitle(paste(sample_name, " ", title_name))
+makehist <- function(df, x_var, y_var, x_label, y_label, title_name="", sample_name=""){
+    df %>% ggplot(aes(x=x_var, y=y_var)) + 
+        geom_histogram(stat = "identity") + xlab(x_label) + ylab(y_label) + theme_bw() + 
+        ggtitle(paste(sample_name, "", title_name))
 }
 
-makeScatter <-
-
+makeScatter <- function(df, x_var, y_var, x_label, y_label, title_name="", sample_name=""){
+    df %>% ggplot(aes(x=x_var, y=y_var)) + geom_point() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab(x_label) + ylab(y_label) + ggtitle(paste(sample_name, " ", title_name))
+}
+    
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
@@ -39,7 +43,10 @@ ui <- fluidPage(
                  tabPanel("Batch",
                           plotOutput("ss_histplot"),
                           plotOutput("ds_histplot"),
-                          plotOutput("duprate_scatter")),
+                          plotOutput("duprate_scatter", dblclick = "duprate_scatter_dblclick", 
+                                     brush = brushOpts(id = "duprate_scatter_brush", resetOnNew = TRUE)
+                                     )
+                          ),
                  tabPanel("Sample",
                           plotOutput("sample_ss_histplot")
                           )
@@ -84,27 +91,57 @@ server <- function(input, output, session) {
             #input$qc_files['name'=='all_samples_ss_read_pairs_per_bc_hist.tsv', 'datapath']
             ss_read_pairs_per_bc_hist<-read.delim(input_data()[input_data()$name=='all_samples_ss_read_pairs_per_bc_hist.tsv','datapath'], 
                                                   stringsAsFactors = F)
-            #new_qc_file<-read.delim(qc_file1$datapath, stringsAsFactors=FALSE)
-            ss_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
-                geom_histogram(stat = "identity") + theme_bw() + labs(title = "Single strand read pairs per barcode")
+            makehist(df = ss_read_pairs_per_bc_hist, x_var = ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
+                     y_var = ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
+                     y_label = "Read pairs", title_name = "Single strand read pairs per barcode")
+            # ss_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
+            #     geom_histogram(stat = "identity") + theme_bw() + labs(title = "Single strand read pairs per barcode")
         })
         
     output$ds_histplot <- renderPlot({
             ds_read_pairs_per_bc_hist<-read.delim(input_data()[input_data()$name=='all_samples_ds_read_pairs_per_bc_hist.tsv','datapath'], 
                                                   stringsAsFactors = F)
-            #new_qc_file<-read.delim(qc_file1$datapath, stringsAsFactors=FALSE)
-            ds_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
-                geom_histogram(stat = "identity") + theme_bw() + labs(title = "Duplex read pairs per barcode")
+            makehist(df = ds_read_pairs_per_bc_hist, x_var = ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
+                     y_var = ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
+                     y_label = "Read pairs", title_name = "Single strand read pairs per barcode")
+            # ds_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
+            #     geom_histogram(stat = "identity") + theme_bw() + labs(title = "Duplex read pairs per barcode")
         })
         
+    # output$duprate_scatter <- renderPlot({
+    #         duprate<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
+    #                             stringsAsFactors = F)
+    #         duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% 
+    #             mutate(sample=factor(x=sample, levels = sample)) %>%
+    #             ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
+    #             theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    #     })
+    
+    #point duprate with zoom after brush and double-click
+    #adapted from https://shiny.rstudio.com/gallery/plot-interaction-zoom.html
+    ranges_duprate_scatter <- reactiveValues(x = NULL, y = NULL)
     output$duprate_scatter <- renderPlot({
-            duprate<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
-                                stringsAsFactors = F)
-            duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% 
-                mutate(sample=factor(x=sample, levels = sample)) %>%
-                ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
-                theme(axis.text.x = element_text(angle = 45, hjust = 1))
-        })
+        duprate<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
+                            stringsAsFactors = F)
+        duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% 
+            mutate(sample=factor(x=sample, levels = sample)) %>%
+            ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            coord_cartesian(xlim = ranges_duprate_scatter$x, ylim = ranges_duprate_scatter$y, expand = FALSE)
+    })
+    # When a double-click happens, check if there's a brush on the plot.
+    # If so, zoom to the brush bounds; if not, reset the zoom.
+    observeEvent(input$duprate_scatter_dblclick, {
+        brush <- input$duprate_scatter_brush
+        if (!is.null(brush)) {
+            ranges_duprate_scatter$x <- c(brush$xmin, brush$xmax)
+            ranges_duprate_scatter$y <- c(brush$ymin, brush$ymax)
+            
+        } else {
+            ranges_duprate_scatter$x <- NULL
+            ranges_duprate_scatter$y <- NULL
+        }
+    })
     
     #Sample tab results
     input_sample<-reactive({
@@ -115,10 +152,14 @@ server <- function(input, output, session) {
                                                                   'datapath'], stringsAsFactors = F)
         #filter for selected sample
         sample_ss_read_pairs_per_bc_hist <- sample_ss_read_pairs_per_bc_hist %>% filter(.data$X.sample==.env$input_sample())
-        sample_ss_read_pairs_per_bc_hist %>%
-            ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) +
-            geom_histogram(stat = "identity") + theme_bw() +
-            ggtitle(paste("Single strand read pairs per barcode for ", input_sample()))
+        makehist(df = sample_ss_read_pairs_per_bc_hist, x_var = sample_ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
+                 y_var = sample_ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
+                 y_label = "Read pairs", title_name = "Single strand read pairs per barcode", 
+                 sample_name = input_sample())
+        # sample_ss_read_pairs_per_bc_hist %>%
+        #     ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) +
+        #     geom_histogram(stat = "identity") + theme_bw() +
+        #     ggtitle(paste("Single strand read pairs per barcode for ", input_sample()))
     })
     
 

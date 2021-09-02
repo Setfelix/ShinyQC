@@ -24,8 +24,14 @@ makeScatter <- function(df, x_var, y_var, x_label, y_label, title_name="", sampl
     df %>% ggplot(aes(x=x_var, y=y_var)) + geom_point() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
         xlab(x_label) + ylab(y_label) + ggtitle(paste(sample_name, " ", title_name))
 }
-    
-# Define UI for application that draws a histogram
+
+# makeStackBar <- function(df, x_var, y_var, x_label, y_label, title_name="", sample_name=""){
+#     df %>% ggplot(aes(x=x_var, y=y_var)) + geom_bar(stat = "identity") + theme_bw() + 
+#         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+#         xlab(x_label) + ylab(y_label) + ggtitle(paste(sample_name, " ", title_name))
+# }
+
+# Define UI for application
 ui <- fluidPage(
 
     # Application title
@@ -41,14 +47,22 @@ ui <- fluidPage(
          mainPanel(
              tabsetPanel(
                  tabPanel("Batch",
+                          br(),
                           plotOutput("ss_histplot"),
+                          br(),
                           plotOutput("ds_histplot"),
+                          br(),
                           plotOutput("duprate_scatter", dblclick = "duprate_scatter_dblclick", 
                                      brush = brushOpts(id = "duprate_scatter_brush", resetOnNew = TRUE)
                                      )
                           ),
                  tabPanel("Sample",
-                          plotOutput("sample_ss_histplot")
+                          br(),
+                          tableOutput("sample_table_summary"),
+                          br(),
+                          plotOutput("sample_ss_histplot"),
+                          br(),
+                          plotOutput("sample_ds_histplot")
                           )
              )
         )
@@ -81,7 +95,7 @@ server <- function(input, output, session) {
         test_duprate_df<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'],
                                     stringsAsFactors = F)
         updateSelectInput(inputId = "sample", 
-                          choices = unique(test_duprate_df$X.sample))
+                          choices = unique(test_duprate_df$sample))
     })
     
     #Batch tab results
@@ -103,7 +117,7 @@ server <- function(input, output, session) {
                                                   stringsAsFactors = F)
             makehist(df = ds_read_pairs_per_bc_hist, x_var = ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
                      y_var = ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
-                     y_label = "Read pairs", title_name = "Single strand read pairs per barcode")
+                     y_label = "Read pairs", title_name = "Duplex read pairs per barcode")
             # ds_read_pairs_per_bc_hist %>% ggplot(aes(x=READ_PAIRS_PER_BC_HISTOGRAM_X, y=READ_PAIRS_PER_BC_HISTOGRAM_Y)) + 
             #     geom_histogram(stat = "identity") + theme_bw() + labs(title = "Duplex read pairs per barcode")
         })
@@ -123,11 +137,10 @@ server <- function(input, output, session) {
     output$duprate_scatter <- renderPlot({
         duprate<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
                             stringsAsFactors = F)
-        duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% 
-            mutate(sample=factor(x=sample, levels = sample)) %>%
+        duprate %>% arrange(desc(DUPLICATE_RATE)) %>% mutate(sample=factor(x=sample, levels = sample)) %>%
             ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
-            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-            coord_cartesian(xlim = ranges_duprate_scatter$x, ylim = ranges_duprate_scatter$y, expand = FALSE)
+            theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+            coord_cartesian(xlim = ranges_duprate_scatter$x, ylim = ranges_duprate_scatter$y, expand = TRUE)
     })
     # When a double-click happens, check if there's a brush on the plot.
     # If so, zoom to the brush bounds; if not, reset the zoom.
@@ -151,7 +164,7 @@ server <- function(input, output, session) {
         sample_ss_read_pairs_per_bc_hist<-read.delim(input_data()[input_data()$name=='all_samples_ss_read_pairs_per_bc_hist.tsv',
                                                                   'datapath'], stringsAsFactors = F)
         #filter for selected sample
-        sample_ss_read_pairs_per_bc_hist <- sample_ss_read_pairs_per_bc_hist %>% filter(.data$X.sample==.env$input_sample())
+        sample_ss_read_pairs_per_bc_hist <- sample_ss_read_pairs_per_bc_hist %>% filter(.data$sample==.env$input_sample())
         makehist(df = sample_ss_read_pairs_per_bc_hist, x_var = sample_ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
                  y_var = sample_ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
                  y_label = "Read pairs", title_name = "Single strand read pairs per barcode", 
@@ -161,7 +174,26 @@ server <- function(input, output, session) {
         #     geom_histogram(stat = "identity") + theme_bw() +
         #     ggtitle(paste("Single strand read pairs per barcode for ", input_sample()))
     })
-    
+    output$sample_ds_histplot<-renderPlot({
+        sample_ds_read_pairs_per_bc_hist<-read.delim(input_data()[input_data()$name=='all_samples_ds_read_pairs_per_bc_hist.tsv',
+                                                                  'datapath'], stringsAsFactors = F)
+        #filter for selected sample
+        sample_ds_read_pairs_per_bc_hist <- sample_ds_read_pairs_per_bc_hist %>% filter(.data$sample==.env$input_sample())
+        makehist(df = sample_ds_read_pairs_per_bc_hist, x_var = sample_ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
+                 y_var = sample_ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
+                 y_label = "Read pairs", title_name = "Duplex read pairs per barcode", sample_name = input_sample())
+        
+    })
+    output$sample_table_summary<-renderTable({
+        sample_nreads<-read.delim(input_data()[input_data()$name=='all_samples_duplex_single_reads.tsv', 'datapath'], 
+                                  stringsAsFactors = F)
+        sample_nreads<-sample_nreads %>% filter(.data$sample==.env$input_sample()) %>% 
+            separate(DUPLEX_VS_SINGLE_CONSENSUS_READS, into = c("Duplex_consensus_reads", "Single_strand_consensus_reads"), 
+                     sep = ",") %>% pivot_longer(!.data$sample, names_to = "Metric", values_to="Value") %>% select(Metric, Value) %>%
+            mutate(Value=number(as.numeric(Value), big.mark = ","))
+        
+    }
+        ,striped = T, bordered = T)
 
     
 }

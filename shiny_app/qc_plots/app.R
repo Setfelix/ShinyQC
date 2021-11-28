@@ -12,6 +12,9 @@ library(tidyverse)
 library(tools)
 library(vroom)
 library(Cairo)
+library(scales)
+library(rmarkdown)
+library(knitr)
 
 #make plotting functions
 makehist <- function(df, x_var, y_var, x_label, y_label, title_name="", sample_name=""){
@@ -43,7 +46,8 @@ ui <- fluidPage(
              fileInput(inputId = "qc_files", buttonLabel = "Upload...",
                        label = "Load QC metrics files", 
                        multiple = T, accept = ".tsv"),
-             selectInput(inputId = "sample", label = "Select sample", choices = character())),
+             selectInput(inputId = "sample", label = "Select sample", choices = character()),
+             downloadButton("report", "Generate Batch report")),
          mainPanel(
              tabsetPanel(
                  tabPanel("Batch",
@@ -54,7 +58,9 @@ ui <- fluidPage(
                           br(),
                           plotOutput("duprate_scatter", dblclick = "duprate_scatter_dblclick", 
                                      brush = brushOpts(id = "duprate_scatter_brush", resetOnNew = TRUE)
-                                     )
+                                     ),
+                          br(),
+                          plotOutput("nreads_barplot")
                           ),
                  tabPanel("Sample",
                           br(),
@@ -122,15 +128,6 @@ server <- function(input, output, session) {
             #     geom_histogram(stat = "identity") + theme_bw() + labs(title = "Duplex read pairs per barcode")
         })
         
-    # output$duprate_scatter <- renderPlot({
-    #         duprate<-read.delim(input_data()[input_data()$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
-    #                             stringsAsFactors = F)
-    #         duprate %>% arrange(desc(DUPLICATE_RATE)) %>% rename(sample=X.sample) %>% 
-    #             mutate(sample=factor(x=sample, levels = sample)) %>%
-    #             ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
-    #             theme(axis.text.x = element_text(angle = 45, hjust = 1))
-    #     })
-    
     #point duprate with zoom after brush and double-click
     #adapted from https://shiny.rstudio.com/gallery/plot-interaction-zoom.html
     ranges_duprate_scatter <- reactiveValues(x = NULL, y = NULL)
@@ -154,6 +151,19 @@ server <- function(input, output, session) {
             ranges_duprate_scatter$x <- NULL
             ranges_duprate_scatter$y <- NULL
         }
+    })
+    #group_by(sample) %>%
+    output$nreads_barplot <- renderPlot({
+        nreads<-read.delim(input_data()[input_data()$name=='all_samples_duplex_single_reads.tsv','datapath'], stringsAsFactors = F)
+        nreads %>% separate(DUPLEX_VS_SINGLE_CONSENSUS_READS, into = c("Duplex_consensus_reads", "Single_strand_consensus_reads"), sep = ",") %>% 
+            mutate(Duplex_consensus_reads=as.numeric(Duplex_consensus_reads), Single_strand_consensus_reads=as.numeric(Single_strand_consensus_reads)) %>%
+            mutate(perc_duplex_reads=(Duplex_consensus_reads/Single_strand_consensus_reads)*100, .after = Single_strand_consensus_reads) %>%
+            pivot_longer(Duplex_consensus_reads:Single_strand_consensus_reads, names_to = "Metric", values_to="Value") %>% 
+            #arrange(desc(perc_duplex_reads)) %>% mutate(sample1=factor(x=sample, labels = sample)) %>%
+            select(sample, Metric, Value) %>%
+            ggplot(aes(x=sample, y=Value, fill=Metric)) + geom_bar(stat = "identity", position = "fill") + theme_bw() +
+            theme(legend.position = "top") + 
+            labs(y="Fraction of reads", x="", title = "Duplex versus single strand consensus reads") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
     })
     
     #Sample tab results
@@ -194,9 +204,38 @@ server <- function(input, output, session) {
         
     }
         ,striped = T, bordered = T)
-
-    
+    #report
+    output$report <- downloadHandler(
+        # For PDF output, change this to "report.pdf"
+        filename = "report.html",
+        content = function(file) {
+            # Copy the report file to a temporary directory before processing it, in
+            # case we don't have write permissions to the current working dir (which
+            # can happen when deployed).
+            #data_set=input_data()
+            #out = knit2pdf
+            #tempReport <- file.path(getwd(), fsep = "\\", "report.Rmd")
+            #tempReport <- file.path(normalizePath(getwd()), fsep = "\\", "report.Rmd")
+            tempReport <- file.path(getwd(), "batch_report.Rmd")
+            #file.copy("batch_report.Rmd", tempReport, overwrite = TRUE)
+            
+            # Set up parameters to pass to Rmd document
+            #parameters <- list(ss = output$ss_histplot, ds = output$ds_histplot, scatter = output$duprate_scatter, nreads = output$nreads_barplot)
+            parameters <- list(inputs = input_data())
+            
+            # Knit the document, passing in the `params` list, and eval it in a
+            # child of the global environment (this isolates the code in the document
+            # from the code in this app).
+            #output_format = "html_document", envir = new.env(parent = globalenv()
+            rmarkdown::render(tempReport, output_file = file,
+                              params = parameters,
+                              envir = new.env(parent = globalenv()))
+            # readBin(con = "built_report.pdf", what = "raw", n = file.info("built_report.pdf")[, "size"]) %>%
+            #     writeBin(con = file)
+        }
+        )
 }
+
 
 # Run the application 
 shinyApp(ui = ui, server = server)

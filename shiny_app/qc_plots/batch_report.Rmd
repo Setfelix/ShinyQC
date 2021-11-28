@@ -1,0 +1,77 @@
+---
+title: "Batch QC report"
+output: html_document
+params:
+  inputs: NULL
+---
+
+
+```{r setup,  echo=FALSE, warning=FALSE, message=FALSE}
+library(shiny)
+library(tidyverse)
+library(tools)
+library(vroom)
+library(Cairo)
+library(scales)
+library(rmarkdown)
+library(knitr)
+
+#make plotting functions
+makehist <- function(df, x_var, y_var, x_label, y_label, title_name="", sample_name=""){
+    df %>% ggplot(aes(x=x_var, y=y_var)) + 
+        geom_histogram(stat = "identity") + xlab(x_label) + ylab(y_label) + theme_bw() + 
+        ggtitle(paste(sample_name, "", title_name))
+}
+
+makeScatter <- function(df, x_var, y_var, x_label, y_label, title_name="", sample_name=""){
+    df %>% ggplot(aes(x=x_var, y=y_var)) + geom_point() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab(x_label) + ylab(y_label) + ggtitle(paste(sample_name, " ", title_name))
+}
+
+input_data<-params$inputs
+```
+
+# Batch report
+
+## Single strand read pairs per barcode
+```{r ss_histplot, echo=FALSE, warning=FALSE, message=FALSE}
+ss_read_pairs_per_bc_hist<-read.delim(input_data[input_data$name=='all_samples_ss_read_pairs_per_bc_hist.tsv','datapath'], 
+                                                  stringsAsFactors = F)
+            makehist(df = ss_read_pairs_per_bc_hist, x_var = ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
+                     y_var = ss_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
+                     y_label = "Read pairs", title_name = "Single strand read pairs per barcode")
+```
+
+## Duplex read pairs per barcode
+```{r ds_histplot, echo=FALSE, warning=FALSE, message=FALSE}
+ds_read_pairs_per_bc_hist<-read.delim(input_data[input_data$name=='all_samples_ds_read_pairs_per_bc_hist.tsv','datapath'], 
+                                                  stringsAsFactors = F)
+            makehist(df = ds_read_pairs_per_bc_hist, x_var = ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_X,
+                     y_var = ds_read_pairs_per_bc_hist$READ_PAIRS_PER_BC_HISTOGRAM_Y, x_label = "Number of Barcodes",
+                     y_label = "Read pairs", title_name = "Duplex read pairs per barcode")
+```
+
+## Duplication rate
+```{r duprate, echo=FALSE, warning=FALSE, message=FALSE}
+duprate<-read.delim(input_data[input_data$name=='all_samples_ss_duplication_rate.tsv','datapath'], 
+                            stringsAsFactors = F)
+duprate %>% arrange(desc(DUPLICATE_RATE)) %>% mutate(sample=factor(x=sample, levels = sample)) %>%
+            ggplot(aes(x=sample, y=DUPLICATE_RATE)) + geom_point() + theme_bw() + labs(title = "Duplication rate per sample") +
+            theme(axis.text.x = element_text(angle = 90, hjust = 1)) #+
+            #coord_cartesian(xlim = ranges_duprate_scatter$x, ylim = ranges_duprate_scatter$y, expand = TRUE)
+```
+
+## Duplex and single strand consensus reads
+```{r nreads_barplot, echo=FALSE, warning=FALSE, message=FALSE}
+nreads<-read.delim(input_data[input_data$name=='all_samples_duplex_single_reads.tsv','datapath'], stringsAsFactors = F)
+nreads %>% separate(DUPLEX_VS_SINGLE_CONSENSUS_READS, into = c("Duplex_consensus_reads", "Single_strand_consensus_reads"), sep = ",") %>% 
+    mutate(Duplex_consensus_reads=as.numeric(Duplex_consensus_reads), Single_strand_consensus_reads=as.numeric(Single_strand_consensus_reads)) %>%
+    mutate(perc_duplex_reads=(Duplex_consensus_reads/Single_strand_consensus_reads)*100, .after = Single_strand_consensus_reads) %>%
+    pivot_longer(Duplex_consensus_reads:Single_strand_consensus_reads, names_to = "Metric", values_to="Value") %>% 
+    #arrange(desc(perc_duplex_reads)) %>% mutate(sample1=factor(x=sample, labels = sample)) %>%
+    select(sample, Metric, Value) %>%
+    ggplot(aes(x=sample, y=Value, fill=Metric)) + geom_bar(stat = "identity", position = "fill") + theme_bw() +
+    theme(legend.position = "top") + 
+    labs(y="Fraction of reads", x="", title = "Duplex versus single strand consensus reads") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
